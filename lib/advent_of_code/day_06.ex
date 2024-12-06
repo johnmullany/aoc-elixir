@@ -50,54 +50,44 @@ defmodule AdventOfCode.Day06 do
     walk_path_rec(grid, pos, dir, MapSet.new([pos]), MapSet.new())
   end
 
-  defp walk_path_rec(grid, pos = {_x, _y}, dir, path, visited_states) do
-    # Get next position and direction based on current state
+  defp walk_path_rec(grid, pos, dir, path, visited_states) do
+    walk_path_step(grid, pos, dir, path, visited_states, {MapSet.member?(visited_states, {pos, dir}), at_edge?(grid, pos)})
+  end
+
+  defp walk_path_step(_grid, _pos, _dir, path, visited_states, {true, _}), do: {path, visited_states}
+  defp walk_path_step(_grid, _pos, _dir, path, visited_states, {_, true}), do: {path, visited_states}
+  defp walk_path_step(grid, pos, dir, path, visited_states, {false, false}) do
     {next_pos, next_dir} = get_next_move(grid, pos, dir)
-    state = {pos, dir}
-
-    cond do
-      # If we've been in this state before, we're done
-      MapSet.member?(visited_states, state) ->
-        {path, visited_states}
-
-      # If we're at the edge of the grid, we're done
-      at_edge?(grid, pos) ->
-        {path, visited_states}
-
-      # If we're about to go out of bounds, we're done
-      out_of_bounds?(grid, next_pos) ->
-        {path, visited_states}
-
-      true ->
-        # Continue walking
-        walk_path_rec(
-          grid,
-          next_pos,
-          next_dir,
-          MapSet.put(path, next_pos),
-          MapSet.put(visited_states, state)
-        )
-    end
+    continue_path(grid, pos, dir, path, visited_states, next_pos, next_dir)
   end
 
-  defp get_next_move(grid, {x, y}, dir) do
-    # Calculate position in front based on current direction
-    front_pos = case dir do
-      :up -> {x, y - 1}
-      :right -> {x + 1, y}
-      :down -> {x, y + 1}
-      :left -> {x - 1, y}
-    end
-
-    # Check if front position is blocked
-    if blocked?(grid, front_pos) do
-      # If blocked, stay in place and turn right
-      {{x, y}, turn_right(dir)}
-    else
-      # If not blocked, move forward keeping same direction
-      {front_pos, dir}
-    end
+  defp continue_path(grid, pos, dir, path, visited_states, next_pos, next_dir) do
+    check_bounds(out_of_bounds?(grid, next_pos), grid, pos, dir, path, visited_states, next_pos, next_dir)
   end
+
+  defp check_bounds(true, _grid, _pos, _dir, path, visited_states, _next_pos, _next_dir), do: {path, visited_states}
+  defp check_bounds(false, grid, pos, dir, path, visited_states, next_pos, next_dir) do
+    walk_path_rec(
+      grid,
+      next_pos,
+      next_dir,
+      MapSet.put(path, next_pos),
+      MapSet.put(visited_states, {pos, dir})
+    )
+  end
+
+  defp get_next_move(grid, pos, dir) do
+    front_pos = front_position(pos, dir)
+    get_next_position(blocked?(grid, front_pos), grid, pos, dir, front_pos)
+  end
+
+  defp get_next_position(true, _grid, pos, dir, _front_pos), do: {pos, turn_right(dir)}
+  defp get_next_position(false, _grid, _pos, dir, front_pos), do: {front_pos, dir}
+
+  defp front_position({x, y}, :up), do: {x, y - 1}
+  defp front_position({x, y}, :right), do: {x + 1, y}
+  defp front_position({x, y}, :down), do: {x, y + 1}
+  defp front_position({x, y}, :left), do: {x - 1, y}
 
   defp turn_right(dir) do
     case dir do
@@ -128,22 +118,24 @@ defmodule AdventOfCode.Day06 do
   defp visualize_path(grid, path) do
     grid
     |> Enum.with_index()
-    |> Enum.map(fn {row, y} ->
-      row
-      |> Enum.with_index()
-      |> Enum.map(fn {cell, x} ->
-        cond do
-          MapSet.member?(path, {x, y}) -> "X"
-          cell == "#" -> "#"
-          true -> "."
-        end
-      end)
-      |> Enum.join("")
-    end)
-    |> Enum.join("\n")
+    |> Enum.map_join("\n", &visualize_row(&1, path))
     |> IO.puts()
     
     IO.puts("\nPath length: #{MapSet.size(path)}")
+  end
+
+  defp visualize_row({row, y}, path) do
+    row
+    |> Enum.with_index()
+    |> Enum.map_join("", &visualize_cell(&1, y, path))
+  end
+
+  defp visualize_cell({cell, x}, y, path) do
+    case {MapSet.member?(path, {x, y}), cell} do
+      {true, _} -> "X"
+      {false, "#"} -> "#"
+      {false, _} -> "."
+    end
   end
 
   defp creates_loop?(grid, start_pos, obstacle_pos) do
@@ -169,16 +161,16 @@ defmodule AdventOfCode.Day06 do
   defp add_obstacle(grid, {x, y}) do
     grid
     |> Enum.with_index()
-    |> Enum.map(fn {row, row_y} ->
-      if row_y == y do
-        row
-        |> Enum.with_index()
-        |> Enum.map(fn {cell, col_x} ->
-          if col_x == x, do: "#", else: cell
-        end)
-      else
-        row
-      end
-    end)
+    |> Enum.map(&update_row(&1, x, y))
   end
+
+  defp update_row({row, y}, x, target_y) when y == target_y do
+    row
+    |> Enum.with_index()
+    |> Enum.map(&update_cell(&1, x))
+  end
+  defp update_row({row, _y}, _x, _target_y), do: row
+
+  defp update_cell({_cell, x}, target_x) when x == target_x, do: "#"
+  defp update_cell({cell, _x}, _target_x), do: cell
 end
